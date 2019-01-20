@@ -17,21 +17,23 @@ instance Countable Bool where count x = if x then 1 else 0
 -- things.
 
 data CountableList where
-  -- ...
-
+  CountableNil :: CountableList
+  CountableCons :: (Countable a) => a -> CountableList -> CountableList
 
 -- | b. Write a function that takes the sum of all members of a 'CountableList'
 -- once they have been 'count'ed.
 
 countList :: CountableList -> Int
-countList = error "Implement me!"
-
+countList CountableNil = 0
+countList (CountableCons h t) = count h + countList t
 
 -- | c. Write a function that removes all elements whose count is 0.
 
 dropZero :: CountableList -> CountableList
-dropZero = error "Implement me!"
-
+dropZero CountableNil = CountableNil
+dropZero (CountableCons h t) = if (count h == 0)
+  then dropZero t
+  else CountableCons h (dropZero t)
 
 -- | d. Can we write a function that removes all the things in the list of type
 -- 'Int'? If not, why not?
@@ -39,40 +41,51 @@ dropZero = error "Implement me!"
 filterInts :: CountableList -> CountableList
 filterInts = error "Contemplate me!"
 
-
-
-
+-- That function can't be impleted because there isn't any information available about the types of the elements. Hence we can't pattern match on them.
 
 {- TWO -}
 
 -- | a. Write a list that can take /any/ type, without any constraints.
 
 data AnyList where
-  -- ...
+  AnyNil :: AnyList
+  AnyCons :: a -> AnyList -> AnyList
 
 -- | b. How many of the following functions can we implement for an 'AnyList'?
 
 reverseAnyList :: AnyList -> AnyList
-reverseAnyList = undefined
+reverseAnyList AnyNil = AnyNil
+reverseAnyList (AnyCons h t) = (reverseAnyList t) `appender` (AnyCons h AnyNil)
 
-filterAnyList :: (a -> Bool) -> AnyList -> AnyList
-filterAnyList = undefined
+appender :: AnyList -> AnyList -> AnyList
+AnyNil `appender` l      = l
+l      `appender` AnyNil = l
+(AnyCons h1 t1) `appender` l2      = AnyCons h1 (t1 `appender` l2)
 
-lengthAnyList :: AnyList -> Int
-lengthAnyList = undefined
+--filterAnyList :: (a -> Bool) -> AnyList -> AnyList
+--filterAnyList _ AnyNil = AnyNil
+--filterAnyList f (AnyCons h t) = if (f h)
+--  then AnyCons h (filterAnyList f t)
+--  else filterAnyList f t
+-- Can't implement because a in (a -> Bool) is not the same as the type of the elements of AnyList
 
-foldAnyList :: Monoid m => AnyList -> m
-foldAnyList = undefined
+countAnyList :: AnyList -> Int
+countAnyList AnyNil = 0
+countAnyList (AnyCons _ t) = 1 + countAnyList t
+
+--foldAnyList :: Monoid m => AnyList -> m
+--foldAnyList AnyNil = mempty
+--foldAnyList (AnyCons h t) = h `mappend` (foldAnyList t)
+-- Can't implement because m in the signature is not the same as the type of the elements of AnyList
 
 isEmptyAnyList :: AnyList -> Bool
-isEmptyAnyList = undefined
+isEmptyAnyList AnyNil = True
+isEmptyAnyList _      = False
 
-instance Show AnyList where
-  show = error "What about me?"
-
-
-
-
+--instance Show AnyList where
+--  show AnyNil = "[]"
+--  show (AnyCons h t) = show h ++ ":" ++ show t
+-- Can't implement because the elements of AnyList don't implement show.
 
 {- THREE -}
 
@@ -95,14 +108,21 @@ transformable2 = TransformWith (uncurry (++)) ("Hello,", " world!")
 -- | a. Which type variable is existential inside 'TransformableTo'? What is
 -- the only thing we can do to it?
 
+-- The existential type variable is 'input'. We can only add constraints and fix the input type.
+
 -- | b. Could we write an 'Eq' instance for 'TransformableTo'? What would we be
 -- able to check?
+
+instance Eq a => Eq (TransformableTo a) where
+  (TransformWith f x) == (TransformWith g y) = f x == g y
+
+-- Can write the instance as above. We can check equility of the output type provided by the extra Eq constraint
 
 -- | c. Could we write a 'Functor' instance for 'TransformableTo'? If so, write
 -- it. If not, why not?
 
-
-
+instance Functor TransformableTo where
+  fmap f (TransformWith g x) = TransformWith (f . g) x
 
 
 {- FOUR -}
