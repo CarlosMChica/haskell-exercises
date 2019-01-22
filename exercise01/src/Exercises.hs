@@ -135,15 +135,26 @@ data EqPair where
 -- | a. There's one (maybe two) useful function to write for 'EqPair'; what is
 -- it?
 
+iseq :: EqPair -> Bool
+iseq (EqPair a a') = a == a'
+
+isnoteq :: EqPair -> Bool
+isnoteq (EqPair a a') = a /= a'
+
 -- | b. How could we change the type so that @a@ is not existential? (Don't
 -- overthink it!)
+data EqPair' a where
+  EqPair' :: Eq a => a -> a -> EqPair' a
+  ShowPair :: Show a => a -> EqPair' a
+
+carlosisreallykeentoimplementthis :: EqPair' a -> String
+carlosisreallykeentoimplementthis (EqPair' a a') = show $ a == a'
+carlosisreallykeentoimplementthis (ShowPair a) = show a
 
 -- | c. If we made the change that was suggested in (b), would we still need a
 -- GADT? Or could we now represent our type as an ADT?
 
-
-
-
+data EqPairAdt a = EqPairAdt a a deriving Eq
 
 {- FIVE -}
 
@@ -168,20 +179,27 @@ getInt (IntBox int _) = int
 -- pattern-match:
 
 getInt' :: MysteryBox String -> Int
-getInt' _doSomeCleverPatternMatching = error "Return that value"
+getInt' (StringBox _ (IntBox x _)) = x
 
 -- | b. Write the following function. Again, don't overthink it!
 
 countLayers :: MysteryBox a -> Int
-countLayers = error "Implement me"
+countLayers EmptyBox = 0
+countLayers (IntBox _ e) = 1 + countLayers e
+countLayers (StringBox _ e) = 1 + countLayers e
+countLayers (BoolBox _ e) = 1 + countLayers e
 
 -- | c. Try to implement a function that removes one layer of "Box". For
 -- example, this should turn a BoolBox into a StringBox, and so on. What gets
 -- in our way? What would its type be?
 
+-- removeLayer :: MysteryBox a -> MysteryBox b
+-- removeLayer EmptyBox = EmptyBox
+-- removeLayer (IntBox _ e) = e
+-- removeLayer (StringBox _ e) = e
+-- removeLayer (BoolBox _ e) = e
 
-
-
+-- We can't implement this function because the type variable a in each of the resultings es are different
 
 {- SIX -}
 
