@@ -1,4 +1,5 @@
 {-# LANGUAGE GADTs #-}
+{-# LANGUAGE FlexibleInstances #-}
 module Exercises where
 
 
@@ -17,23 +18,26 @@ instance Countable Bool where count x = if x then 1 else 0
 -- things.
 
 data CountableList where
-  CountableNil :: CountableList
-  CountableCons :: (Countable a) => a -> CountableList -> CountableList
+  CountableNil  :: CountableList
+  CountableCons :: Countable a => a -> CountableList -> CountableList
 
 -- | b. Write a function that takes the sum of all members of a 'CountableList'
 -- once they have been 'count'ed.
 
 countList :: CountableList -> Int
-countList CountableNil = 0
-countList (CountableCons h t) = count h + countList t
+countList CountableNil         = 0
+countList (CountableCons x xs) = count x + countList xs
+
 
 -- | c. Write a function that removes all elements whose count is 0.
 
 dropZero :: CountableList -> CountableList
 dropZero CountableNil = CountableNil
-dropZero (CountableCons h t) = if (count h == 0)
-  then dropZero t
-  else CountableCons h (dropZero t)
+dropZero (CountableCons x xs) =
+  if count x == 0
+  then dropZero xs
+  else CountableCons x (dropZero xs)
+
 
 -- | d. Can we write a function that removes all the things in the list of type
 -- 'Int'? If not, why not?
@@ -41,7 +45,9 @@ dropZero (CountableCons h t) = if (count h == 0)
 filterInts :: CountableList -> CountableList
 filterInts = error "Contemplate me!"
 
--- That function can't be impleted because there isn't any information available about the types of the elements. Hence we can't pattern match on them.
+
+
+
 
 {- TWO -}
 
@@ -49,43 +55,38 @@ filterInts = error "Contemplate me!"
 
 data AnyList where
   AnyNil :: AnyList
-  AnyCons :: a -> AnyList -> AnyList
+  AnyCons :: Show a => a -> AnyList -> AnyList
 
 -- | b. How many of the following functions can we implement for an 'AnyList'?
 
 reverseAnyList :: AnyList -> AnyList
 reverseAnyList AnyNil = AnyNil
-reverseAnyList (AnyCons h t) = (reverseAnyList t) `appender` (AnyCons h AnyNil)
+reverseAnyList (AnyCons x xs) = reverseAnyList xs `anyConcat` AnyCons x AnyNil
 
-appender :: AnyList -> AnyList -> AnyList
-AnyNil `appender` l      = l
-l      `appender` AnyNil = l
-(AnyCons h1 t1) `appender` l2      = AnyCons h1 (t1 `appender` l2)
+anyConcat :: AnyList -> AnyList -> AnyList
+anyConcat AnyNil b = b
+anyConcat (AnyCons x xs) b = AnyCons x (anyConcat xs b)
 
---filterAnyList :: (a -> Bool) -> AnyList -> AnyList
---filterAnyList _ AnyNil = AnyNil
---filterAnyList f (AnyCons h t) = if (f h)
---  then AnyCons h (filterAnyList f t)
---  else filterAnyList f t
--- Can't implement because a in (a -> Bool) is not the same as the type of the elements of AnyList
+-- filterAnyList :: (a -> Bool) -> AnyList -> AnyList
+-- filterAnyList _ AnyNil = AnyNil
+-- filterAnyList f (AnyCons x xs) = if f x == True then AnyCons x (filterAnyList f xs) else filterAnyList f xs
 
-countAnyList :: AnyList -> Int
-countAnyList AnyNil = 0
-countAnyList (AnyCons _ t) = 1 + countAnyList t
+lengthAnyList :: AnyList -> Int
+lengthAnyList AnyNil = 0
+lengthAnyList (AnyCons _ xs) = 1 + lengthAnyList xs
 
---foldAnyList :: Monoid m => AnyList -> m
---foldAnyList AnyNil = mempty
---foldAnyList (AnyCons h t) = h `mappend` (foldAnyList t)
--- Can't implement because m in the signature is not the same as the type of the elements of AnyList
+-- foldAnyList :: Monoid m => AnyList -> m
+-- foldAnyList AnyNil = mempty
+-- foldAnyList (AnyCons x xs) = x <> foldAnyList xs
 
 isEmptyAnyList :: AnyList -> Bool
 isEmptyAnyList AnyNil = True
-isEmptyAnyList _      = False
+isEmptyAnyList _ = False
 
---instance Show AnyList where
---  show AnyNil = "[]"
---  show (AnyCons h t) = show h ++ ":" ++ show t
--- Can't implement because the elements of AnyList don't implement show.
+instance Show AnyList where
+  show AnyNil = "AnyNil"
+  show (AnyCons x xs) = "AnyCons" <> show x <> " :# " <> show xs
+
 
 {- THREE -}
 
@@ -108,22 +109,19 @@ transformable2 = TransformWith (uncurry (++)) ("Hello,", " world!")
 -- | a. Which type variable is existential inside 'TransformableTo'? What is
 -- the only thing we can do to it?
 
--- The existential type variable is 'input'. We can only add constraints and fix the input type.
+-- input is exstential
 
 -- | b. Could we write an 'Eq' instance for 'TransformableTo'? What would we be
 -- able to check?
 
-instance Eq a => Eq (TransformableTo a) where
-  (TransformWith f x) == (TransformWith g y) = f x == g y
-
--- Can write the instance as above. We can check equility of the output type provided by the extra Eq constraint
+instance Eq o => Eq (TransformableTo o) where
+  (TransformWith f x) == (TransformWith f' x') = f x == f' x'
 
 -- | c. Could we write a 'Functor' instance for 'TransformableTo'? If so, write
 -- it. If not, why not?
 
 instance Functor TransformableTo where
-  fmap f (TransformWith g x) = TransformWith (f . g) x
-
+  fmap f (TransformWith f' x) = TransformWith (f .f') x
 
 {- FOUR -}
 
@@ -135,26 +133,26 @@ data EqPair where
 -- | a. There's one (maybe two) useful function to write for 'EqPair'; what is
 -- it?
 
-iseq :: EqPair -> Bool
-iseq (EqPair a a') = a == a'
-
-isnoteq :: EqPair -> Bool
-isnoteq (EqPair a a') = a /= a'
+isEq :: EqPair -> EqPair -> Bool
+isEq (EqPair a a') (EqPair b b') = a == a' && b == b'
 
 -- | b. How could we change the type so that @a@ is not existential? (Don't
 -- overthink it!)
+
 data EqPair' a where
   EqPair' :: Eq a => a -> a -> EqPair' a
-  ShowPair :: Show a => a -> EqPair' a
-
-carlosisreallykeentoimplementthis :: EqPair' a -> String
-carlosisreallykeentoimplementthis (EqPair' a a') = show $ a == a'
-carlosisreallykeentoimplementthis (ShowPair a) = show a
 
 -- | c. If we made the change that was suggested in (b), would we still need a
 -- GADT? Or could we now represent our type as an ADT?
 
-data EqPairAdt a = EqPairAdt a a deriving Eq
+data EqADT a = Eq a => EqADT a a
+
+instance Eq (EqADT a) where
+  (==) = isEq'
+
+isEq' :: EqADT a -> EqADT a -> Bool
+isEq' (EqADT a a') (EqADT b b') = a == a' && b == b'
+
 
 {- FIVE -}
 
@@ -179,27 +177,28 @@ getInt (IntBox int _) = int
 -- pattern-match:
 
 getInt' :: MysteryBox String -> Int
-getInt' (StringBox _ (IntBox x _)) = x
+getInt' (StringBox _ (IntBox i _)) = i
 
 -- | b. Write the following function. Again, don't overthink it!
 
 countLayers :: MysteryBox a -> Int
 countLayers EmptyBox = 0
-countLayers (IntBox _ e) = 1 + countLayers e
-countLayers (StringBox _ e) = 1 + countLayers e
-countLayers (BoolBox _ e) = 1 + countLayers e
+countLayers (IntBox _ s) = 1 + countLayers s
+countLayers (StringBox _ s) = 1 + countLayers s
+countLayers (BoolBox _ s) = 1 + countLayers s
 
 -- | c. Try to implement a function that removes one layer of "Box". For
 -- example, this should turn a BoolBox into a StringBox, and so on. What gets
 -- in our way? What would its type be?
 
+------  /home/panavtec/code/haskell-exercises/exercise01/src/Exercises.hs:195:28: error:
+------      • Could not deduce: b ~ ()
+------        from the context: a ~ Int
+
 -- removeLayer :: MysteryBox a -> MysteryBox b
 -- removeLayer EmptyBox = EmptyBox
--- removeLayer (IntBox _ e) = e
--- removeLayer (StringBox _ e) = e
--- removeLayer (BoolBox _ e) = e
-
--- We can't implement this function because the type variable a in each of the resultings es are different
+-- removeLayer (IntBox _ b) = b
+-- removeLayer (StringBox _ b) =  b
 
 {- SIX -}
 
@@ -218,18 +217,23 @@ exampleHList = HCons "Tom" (HCons 25 (HCons True HNil))
 -- need to pattern-match on HNil, and therefore the return type shouldn't be
 -- wrapped in a 'Maybe'!
 
+hListHead :: HList (a, b) -> a
+hListHead (HCons h _) = h
+
 -- | b. Currently, the tuples are nested. Can you pattern-match on something of
 -- type @HList (Int, String, Bool, ())@? Which constructor would work?
 
 patternMatchMe :: HList (Int, String, Bool, ()) -> Int
 patternMatchMe = undefined
 
+-- patternMatchMe :: HList ((Int, String, Bool), ()) -> Int
+-- patternMatchMe (HCons (uuu, _, _) _) = uuu
+
 -- | c. Can you write a function that appends one 'HList' to the end of
 -- another? What problems do you run into?
 
-
-
-
+--notgoingtohappen :: HList (a, b) -> HList (c, d) -> HList (v, w)
+--notgoingtohappen HNil HNil = HNil
 
 {- SEVEN -}
 
@@ -242,19 +246,30 @@ data Branch left centre right
 -- /tree/. None of the variables should be existential.
 
 data HTree a where
-  -- ...
+  HEmpty :: HTree ()
+  HBranch :: HTree left -> center -> HTree right -> HTree (left, center, right)
 
 -- | b. Implement a function that deletes the left subtree. The type should be
 -- strong enough that GHC will do most of the work for you. Once you have it,
 -- try breaking the implementation - does it type-check? If not, why not?
 
+exampleHTree :: HTree (((), Integer, ()), Integer, ())
+exampleHTree = HBranch (HBranch HEmpty 1 HEmpty) 2 HEmpty
+
+rmLeft :: HTree (a, b, c) -> HTree ((), b, c)
+rmLeft (HBranch _ b c) = HBranch HEmpty b c
+
 -- | c. Implement 'Eq' for 'HTree's. Note that you might have to write more
 -- than one to cover all possible HTrees. Recursion is your friend here - you
 -- shouldn't need to add a constraint to the GADT!
 
+instance Eq (HTree ()) where
+  HEmpty == HEmpty = True
 
-
-
+instance Eq b => Eq (HTree (a, b, c)) where
+  (HBranch a v b) == (HBranch a' v' b') = v == v' && a == a' && b == b'
+  (HBranch a v HEmpty) == (HBranch a' v' HEmpty) = v == v' && a == a'
+  (HBranch HEmpty v b) == (HBranch HEmpty v' b') = v == v' && b == b'
 
 {- EIGHT -}
 
@@ -346,4 +361,3 @@ data TypeAlignedList a b where
 
 composeTALs :: TypeAlignedList b c -> TypeAlignedList a b -> TypeAlignedList a c
 composeTALs = error "Implement me, and then celebrate!"
-
