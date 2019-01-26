@@ -1,9 +1,10 @@
 {-# LANGUAGE GADTs #-}
 {-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE FlexibleContexts #-}
 module Exercises where
 
-
-
+import Data.Foldable (fold)
+import Data.Semigroup
 
 
 {- ONE -}
@@ -45,9 +46,7 @@ dropZero (CountableCons x xs) =
 filterInts :: CountableList -> CountableList
 filterInts = error "Contemplate me!"
 
-
-
-
+-- filterInts can't be impleted because there isn't any information available about the types of the elements. Hence we can't pattern match on them.
 
 {- TWO -}
 
@@ -84,9 +83,8 @@ isEmptyAnyList AnyNil = True
 isEmptyAnyList _ = False
 
 instance Show AnyList where
-  show AnyNil = "AnyNil"
-  show (AnyCons x xs) = "AnyCons" <> show x <> " :# " <> show xs
-
+  show AnyNil = "[]"
+  show (AnyCons x xs) = show x <> " : " <> show xs
 
 {- THREE -}
 
@@ -109,19 +107,19 @@ transformable2 = TransformWith (uncurry (++)) ("Hello,", " world!")
 -- | a. Which type variable is existential inside 'TransformableTo'? What is
 -- the only thing we can do to it?
 
--- input is exstential
+-- The type variable input is exstential and we can only transform it to the output type variable
 
 -- | b. Could we write an 'Eq' instance for 'TransformableTo'? What would we be
 -- able to check?
 
 instance Eq o => Eq (TransformableTo o) where
-  (TransformWith f x) == (TransformWith f' x') = f x == f' x'
+  (TransformWith f x) == (TransformWith g y) = f x == g y
 
 -- | c. Could we write a 'Functor' instance for 'TransformableTo'? If so, write
 -- it. If not, why not?
 
 instance Functor TransformableTo where
-  fmap f (TransformWith f' x) = TransformWith (f .f') x
+  fmap f (TransformWith g x) = TransformWith (f . g) x
 
 {- FOUR -}
 
@@ -134,7 +132,7 @@ data EqPair where
 -- it?
 
 isEq :: EqPair -> EqPair -> Bool
-isEq (EqPair a a') (EqPair b b') = a == a' && b == b'
+isEq (EqPair x y) (EqPair x' y') = x == y && x' == y'
 
 -- | b. How could we change the type so that @a@ is not existential? (Don't
 -- overthink it!)
@@ -151,8 +149,7 @@ instance Eq (EqADT a) where
   (==) = isEq'
 
 isEq' :: EqADT a -> EqADT a -> Bool
-isEq' (EqADT a a') (EqADT b b') = a == a' && b == b'
-
+isEq' (EqADT x y) (EqADT x' y') = x == y && x' == y'
 
 {- FIVE -}
 
@@ -161,7 +158,7 @@ isEq' (EqADT a a') (EqADT b b') = a == a' && b == b'
 -- constructor.
 
 data MysteryBox a where
-  EmptyBox  ::                                MysteryBox ()
+  EmptyBox  ::                              MysteryBox ()
   IntBox    :: Int    -> MysteryBox ()     -> MysteryBox Int
   StringBox :: String -> MysteryBox Int    -> MysteryBox String
   BoolBox   :: Bool   -> MysteryBox String -> MysteryBox Bool
@@ -171,13 +168,13 @@ data MysteryBox a where
 -- something of the given type.
 
 getInt :: MysteryBox Int -> Int
-getInt (IntBox int _) = int
+getInt (IntBox x _) = x
 
 -- | a. Implement the following function by returning a value directly from a
 -- pattern-match:
 
 getInt' :: MysteryBox String -> Int
-getInt' (StringBox _ (IntBox i _)) = i
+getInt' (StringBox _ (IntBox x _)) = x
 
 -- | b. Write the following function. Again, don't overthink it!
 
@@ -191,10 +188,7 @@ countLayers (BoolBox _ s) = 1 + countLayers s
 -- example, this should turn a BoolBox into a StringBox, and so on. What gets
 -- in our way? What would its type be?
 
-------  /home/panavtec/code/haskell-exercises/exercise01/src/Exercises.hs:195:28: error:
-------      • Could not deduce: b ~ ()
-------        from the context: a ~ Int
-
+-- • Could not deduce: b ~ () from the context: a ~ Int
 -- removeLayer :: MysteryBox a -> MysteryBox b
 -- removeLayer EmptyBox = EmptyBox
 -- removeLayer (IntBox _ b) = b
@@ -209,6 +203,7 @@ data HList a where
   HNil  :: HList ()
   HCons :: head -> HList tail -> HList (head, tail)
 
+
 exampleHList :: HList (String, (Int, (Bool, ())))
 exampleHList = HCons "Tom" (HCons 25 (HCons True HNil))
 
@@ -218,7 +213,7 @@ exampleHList = HCons "Tom" (HCons 25 (HCons True HNil))
 -- wrapped in a 'Maybe'!
 
 hListHead :: HList (a, b) -> a
-hListHead (HCons h _) = h
+hListHead (HCons x _) = x
 
 -- | b. Currently, the tuples are nested. Can you pattern-match on something of
 -- type @HList (Int, String, Bool, ())@? Which constructor would work?
@@ -232,7 +227,7 @@ patternMatchMe = undefined
 -- | c. Can you write a function that appends one 'HList' to the end of
 -- another? What problems do you run into?
 
---notgoingtohappen :: HList (a, b) -> HList (c, d) -> HList (v, w)
+--notgoingtohappen :: HList (a, b) -> HList (c, d) -> HList (a, (b, (c, d))
 --notgoingtohappen HNil HNil = HNil
 
 {- SEVEN -}
@@ -246,7 +241,7 @@ data Branch left centre right
 -- /tree/. None of the variables should be existential.
 
 data HTree a where
-  HEmpty :: HTree ()
+  HEmpty  :: HTree ()
   HBranch :: HTree left -> center -> HTree right -> HTree (left, center, right)
 
 -- | b. Implement a function that deletes the left subtree. The type should be
@@ -254,7 +249,16 @@ data HTree a where
 -- try breaking the implementation - does it type-check? If not, why not?
 
 exampleHTree :: HTree (((), Integer, ()), Integer, ())
-exampleHTree = HBranch (HBranch HEmpty 1 HEmpty) 2 HEmpty
+exampleHTree = HBranch (HBranch HEmpty 3 HEmpty) 2 HEmpty
+
+exampleHTree' :: HTree (((), Integer, ()), Integer, ((), Integer, ()))
+exampleHTree' = HBranch (HBranch HEmpty 1 HEmpty) 2 (HBranch HEmpty 3 HEmpty)
+
+exampleHTree'' :: HTree (((), Integer, ()), Integer, ())
+exampleHTree'' = HBranch (HBranch HEmpty 1 HEmpty) 2 HEmpty
+
+exampleHTree''' :: HTree (((), Integer, ()), Integer, ())
+exampleHTree''' = HBranch (HBranch HEmpty 1 HEmpty) 2 HEmpty
 
 rmLeft :: HTree (a, b, c) -> HTree ((), b, c)
 rmLeft (HBranch _ b c) = HBranch HEmpty b c
@@ -266,10 +270,8 @@ rmLeft (HBranch _ b c) = HBranch HEmpty b c
 instance Eq (HTree ()) where
   HEmpty == HEmpty = True
 
-instance Eq b => Eq (HTree (a, b, c)) where
-  (HBranch a v b) == (HBranch a' v' b') = v == v' && a == a' && b == b'
-  (HBranch a v HEmpty) == (HBranch a' v' HEmpty) = v == v' && a == a'
-  (HBranch HEmpty v b) == (HBranch HEmpty v' b') = v == v' && b == b'
+instance (Eq b, Eq (HTree a), Eq (HTree c)) => Eq (HTree (a, b, c)) where
+  (HBranch l x r) == (HBranch l' x' r') = x == x' && l == l' && r == r'
 
 {- EIGHT -}
 
@@ -282,25 +284,43 @@ instance Eq b => Eq (HTree (a, b, c)) where
 -- @
 
 data AlternatingList a b where
-  -- ...
+  ANil  :: AlternatingList c d
+  ACons :: a -> AlternatingList b a -> AlternatingList a b
+
+f :: AlternatingList Bool Int
+f = ACons True (ACons 1 (ACons False (ACons 2 ANil)))
+
+f' :: AlternatingList Bool Int
+f' = ACons True (ACons 1 (ACons False ANil))
+
+f'' :: AlternatingList (All) (Sum Int)
+f'' = ACons (All True) (ACons (Sum 1) (ACons (All False)(ACons (Sum 2) ANil)))
 
 -- | b. Implement the following functions.
 
 getFirsts :: AlternatingList a b -> [a]
-getFirsts = error "Implement me!"
+getFirsts ANil                    = []
+getFirsts (ACons x ANil)          = [x]
+getFirsts (ACons x (ACons _ xs)) = x : getFirsts xs
 
 getSeconds :: AlternatingList a b -> [b]
-getSeconds = error "Implement me, too!"
+getSeconds ANil                    = []
+getSeconds (ACons _ ANil)          = []
+getSeconds (ACons _ (ACons x' xs)) = x' : getSeconds xs
 
 -- | c. One more for luck: write this one using the above two functions, and
 -- then write it such that it only does a single pass over the list.
 
 foldValues :: (Monoid a, Monoid b) => AlternatingList a b -> (a, b)
-foldValues = error "Implement me, three!"
+foldValues xs = (fold ys, fold zs)
+  where
+    ys = getFirsts xs
+    zs = getSeconds xs
 
-
-
-
+foldValues' :: (Monoid a, Monoid b) => AlternatingList a b -> (a, b)
+foldValues' ANil = (mempty, mempty)
+foldValues' (ACons x ANil) = (x, mempty)
+foldValues' (ACons x (ACons x' xs)) = (x <> (fst $ foldValues' xs), x' <> (snd $ foldValues' xs))
 
 {- NINE -}
 
@@ -309,16 +329,24 @@ foldValues = error "Implement me, three!"
 -- our expression is well-formed.
 
 data Expr a where
-  Equals    :: Expr Int  -> Expr Int            -> Expr Bool
-  Add       :: Expr Int  -> Expr Int            -> Expr Int
-  If        :: Expr Bool -> Expr a   -> Expr a  -> Expr a
-  IntValue  :: Int                              -> Expr Int
-  BoolValue :: Bool                             -> Expr Bool
+  Equals    :: Expr Int  -> Expr Int           -> Expr Bool
+  Add       :: Expr Int  -> Expr Int           -> Expr Int
+  If        :: Expr Bool -> Expr a   -> Expr a -> Expr a
+  IntValue  :: Int                             -> Expr Int
+  BoolValue :: Bool                            -> Expr Bool
+  Function  :: (Expr a -> Expr b) -> Expr a -> Expr b
 
 -- | a. Implement the following function and marvel at the typechecker:
 
 eval :: Expr a -> a
-eval = error "Implement me"
+eval (BoolValue x)        = x
+eval (IntValue x)         = x
+eval (If cond expr expr') = if eval cond then eval expr else eval expr'
+eval (Add x y)            = eval x + eval y
+eval (Equals x y)         = eval x == eval y
+eval (Function f x)       = eval $ f x
+
+exampleExpr = Function (Equals (IntValue 1)) (IntValue 1)
 
 -- | b. Here's an "untyped" expression language. Implement a parser from this
 -- into our well-typed language. Note that (until we cover higher-rank
@@ -332,7 +360,20 @@ data DirtyExpr
   | DirtyBoolValue Bool
 
 parse :: DirtyExpr -> Maybe (Expr Int)
-parse = error "Implement me"
+parse (DirtyIntValue x)       = Just $ IntValue x
+parse (DirtyIf cond exp exp') = If <$> parse' cond <*> parse exp <*> parse exp'
+parse (DirtyAdd exp exp')     = Add <$> parse exp <*> parse exp'
+parse _                       = Nothing
+
+parse' :: DirtyExpr -> Maybe (Expr Bool)
+parse' (DirtyEquals exp exp') = Equals <$> parse exp <*> parse exp'
+parse' (DirtyBoolValue x)     = Just $ BoolValue x
+parse' _                      = Nothing
+
+exampleAST :: DirtyExpr
+exampleAST = DirtyIf (DirtyEquals (DirtyIntValue 1) (DirtyIntValue 1))
+               (DirtyAdd (DirtyIntValue 5) (DirtyIntValue 10))
+               (DirtyIntValue 1)
 
 -- | c. Can we add functions to our 'Expr' language? If not, why not? What
 -- other constructs would we need to add? Could we still avoid 'Maybe'?
