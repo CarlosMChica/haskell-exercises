@@ -1,10 +1,13 @@
 {-# LANGUAGE GADTs #-}
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE RankNTypes #-}
 module Exercises where
 
 import Data.Foldable (fold)
 import Data.Semigroup
+import Data.Maybe
+import Debug.Trace
 
 
 {- ONE -}
@@ -334,7 +337,8 @@ data Expr a where
   If        :: Expr Bool -> Expr a   -> Expr a -> Expr a
   IntValue  :: Int                             -> Expr Int
   BoolValue :: Bool                            -> Expr Bool
-  Function  :: (Expr a -> Expr b) -> Expr a -> Expr b
+  Function  :: (a -> Expr b) -> Expr (a -> b)
+  Apply     :: Expr (a -> b) -> Expr a -> Expr b
 
 -- | a. Implement the following function and marvel at the typechecker:
 
@@ -344,9 +348,11 @@ eval (IntValue x)         = x
 eval (If cond expr expr') = if eval cond then eval expr else eval expr'
 eval (Add x y)            = eval x + eval y
 eval (Equals x y)         = eval x == eval y
-eval (Function f x)       = eval $ f x
+eval (Apply f x)          = eval f $ eval x
+eval (Function f)         = eval . f
 
-exampleExpr = Function (Equals (IntValue 1)) (IntValue 1)
+--exampleExpr = Function (Equals (IntValue 1)) (IntValue 1)
+exampleExpr = Apply (Function (\x -> IntValue $ x + 1)) (IntValue 1)
 
 -- | b. Here's an "untyped" expression language. Implement a parser from this
 -- into our well-typed language. Note that (until we cover higher-rank
@@ -358,22 +364,36 @@ data DirtyExpr
   | DirtyIf        DirtyExpr DirtyExpr DirtyExpr
   | DirtyIntValue  Int
   | DirtyBoolValue Bool
+  | DirtyFunction  (DirtyExpr -> DirtyExpr) DirtyExpr
 
 parse :: DirtyExpr -> Maybe (Expr Int)
-parse (DirtyIntValue x)       = Just $ IntValue x
-parse (DirtyIf cond exp exp') = If <$> parse' cond <*> parse exp <*> parse exp'
-parse (DirtyAdd exp exp')     = Add <$> parse exp <*> parse exp'
-parse _                       = Nothing
+parse (DirtyIntValue x)        = Just $ IntValue x
+parse (DirtyIf cond exp exp')  = If <$> parse' cond <*> parse exp <*> parse exp'
+parse (DirtyAdd exp exp')      = Add <$> parse exp <*> parse exp'
+-- parse (DirtyFunction f arg)    =
+--   (Function $ fromJust . parse . f . (const $ fromJust . parse $ arg)) <$> parse arg
+parse _                        = Nothing
 
 parse' :: DirtyExpr -> Maybe (Expr Bool)
 parse' (DirtyEquals exp exp') = Equals <$> parse exp <*> parse exp'
 parse' (DirtyBoolValue x)     = Just $ BoolValue x
 parse' _                      = Nothing
 
+--exampleExpr' = eval . fromJust . parse $ DirtyFunction (DirtyEquals (DirtyIntValue 2)) (DirtyIntValue 1)
+
 exampleAST :: DirtyExpr
 exampleAST = DirtyIf (DirtyEquals (DirtyIntValue 1) (DirtyIntValue 1))
                (DirtyAdd (DirtyIntValue 5) (DirtyIntValue 10))
                (DirtyIntValue 1)
+
+exampleAST' :: DirtyExpr
+exampleAST' =
+  DirtyIf
+   (DirtyIf (DirtyEquals (DirtyIntValue 1) (DirtyIntValue 1))
+               (DirtyBoolValue True)
+               (DirtyBoolValue False))
+  (DirtyIntValue 1)
+  (DirtyIntValue 2)
 
 -- | c. Can we add functions to our 'Expr' language? If not, why not? What
 -- other constructs would we need to add? Could we still avoid 'Maybe'?
@@ -393,7 +413,8 @@ exampleAST = DirtyIf (DirtyEquals (DirtyIntValue 1) (DirtyIntValue 1))
 -- long as the input of one lines up with the output of the next.
 
 data TypeAlignedList a b where
-  -- ...
+  TNil :: TypeAlignedList b b
+  TCons :: (a -> b) -> TypeAlignedList b c -> TypeAlignedList a c
 
 -- | b. Which types are existential?
 
@@ -401,4 +422,23 @@ data TypeAlignedList a b where
 -- not as difficult as you'd initially think.
 
 composeTALs :: TypeAlignedList b c -> TypeAlignedList a b -> TypeAlignedList a c
-composeTALs = error "Implement me, and then celebrate!"
+composeTALs t TNil = t
+composeTALs t  (TCons f TNil) = TCons f (composeTALs t TNil)
+composeTALs t' (TCons f (TCons g t)) = TCons (g . f) (composeTALs t' t)
+
+exampleTAL :: TypeAlignedList [Maybe Int] String
+exampleTAL = TCons show TNil `composeTALs` TCons catMaybes (TCons head TNil)
+
+-- evalTAL :: Monoid b => TypeAlignedList a b -> a -> b
+-- evalTAL TNil a = mempty
+-- evalTAL (TCons f TNil) a = f a
+-- --evalTAL (TCons f (TCons g t)) a = (g . f) a <> evalTAL t a
+-- evalTAL (TCons f (TCons g t)) a = g . f $ a
+
+-- evalTAL :: Monoid b => TypeAlignedList a b -> a -> b
+-- evalTAL t a = go t id $ a
+--   where
+--     go :: TypeAlignedList a b -> (forall a . (a -> b)) -> (a -> b)
+--     go TNil f = f
+--     go (TCons f TNil) g = f . g
+--    go (TCons f (TCons g t)) h = go t (g . f . h)
