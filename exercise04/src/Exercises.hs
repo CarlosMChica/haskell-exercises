@@ -1,14 +1,17 @@
 {-# LANGUAGE DataKinds      #-}
 {-# LANGUAGE GADTs          #-}
 {-# LANGUAGE KindSignatures #-}
+{-# LANGUAGE PolyKinds #-}
+{-# LANGUAGE TypeFamilies #-}
+{-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE ConstraintKinds #-}
+{-# LANGUAGE TypeOperators #-}
+
 module Exercises where
 
-import Data.Kind (Type)
+import Data.Kind (Type, Constraint)
 import Data.Function ((&))
-
-
-
-
+import Data.Coerce
 
 {- ONE -}
 
@@ -21,13 +24,26 @@ data IntegerMonoid = Sum | Product
 -- | a. Write a newtype around 'Integer' that lets us choose which instance we
 -- want.
 
+newtype MonoidInt (method :: IntegerMonoid)
+  = MonoidInt Int
+
 -- | b. Write the two monoid instances for 'Integer'.
 
+instance Semigroup (MonoidInt Sum) where
+  a <> b = MonoidInt $ coerce a + coerce b
+
+instance Monoid (MonoidInt Sum) where
+  mempty = MonoidInt 0
+  mappend = (<>)
+
+instance Semigroup (MonoidInt Product) where
+  a <> b = MonoidInt $ coerce a * coerce b
+
+instance Monoid (MonoidInt Product) where
+  mempty = MonoidInt 1
+  mappend = (<>)
+
 -- | c. Why do we need @FlexibleInstances@ to do this?
-
-
-
-
 
 {- TWO -}
 
@@ -39,7 +55,12 @@ data Void -- No constructors!
 -- | a. If we promote this with DataKinds, can we produce any /types/ of kind
 -- 'Void'?
 
+type family Algo :: k where
+  Algo = Void
+
 -- | b. What are the possible type-level values of kind 'Maybe Void'?
+
+-- 'Nothing, 'Just Void
 
 -- | c. Considering 'Maybe Void', and similar examples of kinds such as
 -- 'Either Void Bool', why do you think 'Void' might be a useful kind?
@@ -56,16 +77,20 @@ data Void -- No constructors!
 
 data Nat = Z | S Nat
 
-data StringAndIntList (stringCount :: Nat) where
-  -- ...
+data StringAndIntList (stringCount :: Nat) (intCount :: Nat) where
+  SNil  :: StringAndIntList Z Z
+  SCons :: String -> StringAndIntList n n2  -> StringAndIntList (S n) n2
+  ICons :: Int -> StringAndIntList n2 n -> StringAndIntList n2 (S n)
+
+foo :: StringAndIntList (S Z) Z
+foo = (SCons "asd") SNil
 
 -- | b. Update it to keep track of the count of strings /and/ integers.
-
 -- | c. What would be the type of the 'head' function?
 
-
-
-
+sHead :: StringAndIntList (S _i) (S _t) -> Either String Int
+sHead (SCons f _) = Left f
+sHead (ICons f _) = Right f
 
 {- FOUR -}
 
@@ -79,19 +104,26 @@ data Showable where
 -- stores this fact in the type-level.
 
 data MaybeShowable (isShowable :: Bool) where
-  -- ...
+  F :: a -> MaybeShowable False
+  F' :: Showable -> MaybeShowable True
 
 -- | b. Write a 'Show' instance for 'MaybeShowable'. Your instance should not
 -- work unless the type is actually 'show'able.
+
+instance Show (MaybeShowable True) where
+  show (F' (Showable u)) = show u
 
 -- | c. What if we wanted to generalise this to @Constrainable@, such that it
 -- would work for any user-supplied constraint of kind 'Constraint'? How would
 -- the type change? What would the constructor look like? Try to build this
 -- type - GHC should tell you exactly which extension you're missing.
 
+data Constrainable (k :: Type -> Constraint) (isConstraint :: Bool) where
+  Constrainable   :: k a => a -> Constrainable k True
+  NoConstrainable :: a -> Constrainable k False
 
-
-
+instance Show (Constrainable Show True) where
+  show (Constrainable u) = show u
 
 {- FIVE -}
 
@@ -100,33 +132,38 @@ data MaybeShowable (isShowable :: Bool) where
 data List a = Nil | Cons a (List a)
 
 -- | a. Use this to write a better 'HList' type than we had in the @GADTs@
--- exercise. Bear in mind that, at the type-level, 'Nil' and 'Cons' should be
+-- exercise. Bear in mind that, at the type-level, Nil' and 'Cons' should be
 -- "ticked". Remember also that, at the type-level, there's nothing weird about
 -- having a list of types!
 
 data HList (types :: List Type) where
-  -- HNil  :: ...
-  -- HCons :: ...
+  HNil  :: HList Nil
+  HCons :: a -> HList b -> HList (Cons a b)
 
 -- | b. Write a well-typed, 'Maybe'-less implementation for the 'tail' function
 -- on 'HList'.
 
+hTail :: HList (Cons a b) -> HList b
+hTail (HCons _ b) = b
+
 -- | c. Could we write the 'take' function? What would its type be? What would
 -- get in our way?
 
+-- With a type family we could implement it in terms of FoldR
 
-
-
+-- hTake :: Int -> HList (Eval Fst <=< (FoldR ((Cons _, n - 1)) n) -> HList _
 
 {- SIX -}
 
 -- | Here's a boring data type:
 
-data BlogAction
-  = AddBlog
-  | DeleteBlog
-  | AddComment
-  | DeleteComment
+data Roles = Moderator | User | Admin
+
+data BlogAction (isAdmin :: Roles) where
+  AddBlog       :: BlogAction User
+  DeleteBlog    :: BlogAction Admin
+  AddComment    :: BlogAction User
+  DeleteComment :: BlogAction Moderator
 
 -- | a. Two of these actions, 'DeleteBlog' and 'DeleteComment', should be
 -- admin-only. Extend the 'BlogAction' type (perhaps with a GADT...) to
@@ -137,17 +174,14 @@ data BlogAction
 -- | b. Write a 'BlogAction' list type that requires all its members to be
 -- the same "access level": "admin" or "non-admin".
 
--- data BlogActionList (isSafe :: ???) where
---   ...
+data BlogActionList (roles :: [Roles]) where
+  BNil :: BlogActionList '[]
+  BCons :: BlogAction r -> BlogActionList rs -> BlogActionList (r ': rs)
 
 -- | c. Let's imagine that our requirements change, and 'DeleteComment' is now
 -- available to a third role: moderators. Could we use 'DataKinds' to introduce
 -- the three roles at the type-level, and modify our type to keep track of
 -- this?
-
-
-
-
 
 {- SEVEN -}
 

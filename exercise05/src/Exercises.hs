@@ -2,13 +2,12 @@
 {-# LANGUAGE KindSignatures #-}
 {-# LANGUAGE GADTs          #-}
 {-# LANGUAGE RankNTypes     #-}
+{-# LANGUAGE InstanceSigs     #-}
+{-# LANGUAGE RecordWildCards     #-}
 module Exercises where
 
 import Data.Kind (Type)
-
-
-
-
+import Data.Functor.Identity
 
 {- ONE -}
 
@@ -20,16 +19,18 @@ data Exlistential where
 
 -- | a. Write a function to "unpack" this exlistential into a list.
 
--- unpackExlistential :: Exlistential -> (forall a. a -> r) -> [r]
--- unpackExlistential = error "Implement me!"
+unpackExlistential :: Exlistential -> (forall a. a -> r) -> [r]
+unpackExlistential Nil _ = []
+unpackExlistential (Cons a t) f = f a : unpackExlistential t f
 
 -- | b. Regardless of which type @r@ actually is, what can we say about the
 -- values in the resulting list?
 
+-- They are given by the function
+
 -- | c. How do we "get back" knowledge about what's in the list? Can we?
 
-
-
+-- We can't unless we constraint the Exlistential type and the function
 
 
 {- TWO -}
@@ -42,15 +43,25 @@ data CanFold a where
 
 -- | a. The following function unpacks a 'CanFold'. What is its type?
 
--- unpackCanFold :: ???
--- unpackCanFold f (CanFold x) = f x
+unpackCanFold :: (forall f. Foldable f => f a -> t a) -> (CanFold a) -> t a
+unpackCanFold f (CanFold x) = f x
+
+foo :: [Int]
+foo = unpackCanFold (foldr (:) []) (CanFold [2,3,4])
 
 -- | b. Can we use 'unpackCanFold' to figure out if a 'CanFold' is "empty"?
 -- Could we write @length :: CanFold a -> Int@? If so, write it!
 
+-- Only if unpackCanFold would be this: (as replaced with bs)
+-- unpackCanFold :: (forall f. Foldable f => f a -> t a) -> (CanFold a) -> t a
+-- length :: CanFold a -> Identity Int
+-- length = unpackCanFold (Identity . Prelude.length)
+
 -- | c. Write a 'Foldable' instance for 'CanFold'. Don't overthink it.
 
-
+instance Foldable CanFold where
+  foldr :: (a -> b -> b) -> b -> CanFold a -> b
+  foldr f b (CanFold fa) = foldr f b fa
 
 
 
@@ -64,16 +75,25 @@ data EqPair where
 -- | a. Write a function that "unpacks" an 'EqPair' by applying a user-supplied
 -- function to its pair of values in the existential type.
 
+unpackEqPair :: (forall a. a -> r) -> EqPair -> (r, r)
+unpackEqPair fa (EqPair a a') = (fa a, fa a')
+
 -- | b. Write a function that takes a list of 'EqPair's and filters it
 -- according to some predicate on the unpacked values.
+
+bex :: [EqPair] -> (forall a. a -> a -> Bool) -> [EqPair]
+bex [] _ = []
+bex (x@(EqPair a a') : es) feo =
+  if feo a a' == True
+  then x : bex es feo
+  else bex es feo
 
 -- | c. Write a function that unpacks /two/ 'EqPair's. Now that both our
 -- variables are in rank-2 position, can we compare values from different
 -- pairs?
 
-
-
-
+-- We can't compare two pairs of EqPair because Eq constraint requires both arguments
+-- to be of the same type
 
 {- FOUR -}
 
@@ -81,7 +101,7 @@ data EqPair where
 -- rank-2 types. Consider the following sketch of a type:
 
 data Component input output
-  -- = Some sort of component stuff.
+   = Component (input -> output)
 
 -- | Now, let's imagine we want to add a constructor to "nest" a component
 -- inside another component type. We need a way of transforming between our
@@ -97,10 +117,16 @@ data Nested input output subinput suboutput
 -- | a. Write a GADT to existentialise @subinput@ and @suboutput@.
 
 data NestedX input output where
-  -- ...
+  Foo :: Nested input output si so -> NestedX input output
 
 -- | b. Write a function to "unpack" a NestedX. The user is going to have to
 -- deal with all possible @subinput@ and @suboutput@ types.
+
+unpackX :: (forall si. si' -> si) -> (forall so. so -> so') -> NestedX i o -> Nested i o si' so'
+unpackX f f' (Foo (Nested (Component fsiso) input output))
+  = Nested (Component $ f' . fsiso . f) _what1 _what2
+  -- (fio . input) (output . f')
+
 
 -- | c. Why might we want to existentialise the subtypes away? What do we lose
 -- by doing so? What do we gain?
